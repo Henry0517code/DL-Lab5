@@ -273,9 +273,12 @@ class DQNAgent:
         st = obs if hasattr(self.preprocessor,'reset')==False else self.preprocessor.reset(obs)
         done = False; tot=0
         while not done:
-            with torch.no_grad(): a = int(self.q_net(torch.tensor(st).unsqueeze(0).to(self.device)).argmax(1))
-            no,r,term,tr,_ = self.test_env.step(a)
-            done = term or tr; tot+=r; st = self.preprocessor.step(no) if hasattr(self.preprocessor,'step') else no
+            # Convert state to float32 tensor
+            state_tensor = torch.from_numpy(np.array(st, dtype=np.float32)).unsqueeze(0).to(self.device)
+            with torch.no_grad():
+                a = int(self.q_net(state_tensor).argmax(1).item())
+            no, r, term, tr, _ = self.test_env.step(a)
+            done = term or tr; tot += r; st = self.preprocessor.step(no) if hasattr(self.preprocessor, 'step') else no
         return tot
 
 if __name__ == '__main__':
