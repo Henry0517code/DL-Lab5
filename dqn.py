@@ -231,6 +231,10 @@ class DQNAgent:
         loss.backward()
         self.optimizer.step()
 
+        # Debug log every 1000 updates
+        if self.train_count % 1000 == 0:
+            print(f"[Train Step {self.train_count}] Loss: {loss.item():.4f} Epsilon: {self.epsilon:.4f}")
+
         if self.use_per:
             errs = (Q - Y).abs().detach().cpu().numpy()
             self.memory.update_priorities(idxs, errs)
@@ -255,10 +259,10 @@ class DQNAgent:
                 for _ in range(self.train_per_step): self.train()
                 state, total_r = ns, total_r + r
                 self.env_count += 1; steps += 1
-                # Task3 checkpoint
-                if self.env_count in self.args.checkpoint_steps:
-                    fn = f"LAB5_{self.args.student_id}_task3_pong{self.env_count}.pt"
-                    torch.save(self.q_net.state_dict(), os.path.join(self.args.save_dir, fn))
+
+            # Episode summary log
+            print(f"[Episode {ep}] Reward: {total_r:.2f}, Steps: {steps}, EnvSteps: {self.env_count}, TrainSteps: {self.train_count}, Epsilon: {self.epsilon:.4f}")
+
             # Evaluation & best-model saving
             if ep % 20 == 0:
                 er = self.evaluate()
