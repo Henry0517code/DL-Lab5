@@ -105,6 +105,9 @@ class PrioritizedReplayBuffer:
         self.buffer = []
         self.priorities = np.zeros((capacity,), dtype=np.float32)
         self.pos = 0
+    
+    def __len__(self):
+        return len(self.buffer)
 
     def add(self, transition, error):
         if len(self.buffer) < self.capacity:
