@@ -78,7 +78,7 @@ class AtariPreprocessor:
         self.frames = deque(maxlen=frame_stack)
 
     def preprocess(self, obs):
-        gray = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)
+        gray = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY).astype(np.float32) / 255.0
         return cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA)
 
     def reset(self, obs):
@@ -254,23 +254,59 @@ class DQNAgent:
                 no, r, term, trunc, _ = self.env.step(a)
                 done = term or trunc
                 ns = self.preprocessor.step(no) if hasattr(self.preprocessor, 'step') else no
-                # Multi-step logic omitted for brevity—handled just like in train.py above
-                self.memory.append((state,a,r,ns,done))
+                # Multi-step Experience: accumulate n-step transitions
+                self.n_step_buffer.append((state, a, r, ns, done))
+                if len(self.n_step_buffer) == self.n_step:
+                    # Compute n-step return
+                    R, last_s, last_done = 0.0, self.n_step_buffer[-1][3], self.n_step_buffer[-1][4]
+                    for idx, (_, a0, r0, _, _) in enumerate(self.n_step_buffer):
+                        R += (self.gamma ** idx) * r0
+                    s0, a0 = self.n_step_buffer[0][0], self.n_step_buffer[0][1]
+                    transition = (s0, a0, R, last_s, last_done)
+                    # Add to replay memory
+                    if self.use_per:
+                        # Use max priority for new transition
+                        max_p = self.memory.priorities.max() if len(self.memory.buffer) > 0 else 1.0
+                        self.memory.add(transition, max_p)
+                    else:
+                        self.memory.append(transition)
                 for _ in range(self.train_per_step): self.train()
                 state, total_r = ns, total_r + r
                 self.env_count += 1; steps += 1
 
-            # Episode summary log
-            print(f"[Episode {ep}] Reward: {total_r:.2f}, Steps: {steps}, EnvSteps: {self.env_count}, TrainSteps: {self.train_count}, Epsilon: {self.epsilon:.4f}")
+                # Task 3: save checkpoint if this step matches
+                if hasattr(self.args, 'checkpoint_steps') and self.env_count in self.args.checkpoint_steps:
+                    filename = f"LAB5_{self.args.student_id}_task3_pong{self.env_count}.pt"
+                    path = os.path.join(self.args.save_dir, filename)
+                    torch.save(self.q_net.state_dict(), path)
+                    print(f"[Checkpoint] Saved Task3 snapshot at env step {self.env_count} to {path}")
+
+                if self.env_count % 1000 == 0:                 
+                    print(f"[Collect] Ep: {ep} Step: {steps} SC: {self.env_count} UC: {self.train_count} Eps: {self.epsilon:.4f}")
+                    wandb.log({
+                        "Episode": ep,
+                        "Step Count": steps,
+                        "Env Step Count": self.env_count,
+                        "Update Count": self.train_count,
+                        "Epsilon": self.epsilon
+                    })
 
             # Evaluation & best-model saving
             if ep % 20 == 0:
-                er = self.evaluate()
-                if er > self.best_reward:
-                    self.best_reward = er
-                    t, suf = (1,'cartpole') if 'CartPole' in self.env.spec.id else (2,'pong')
-                    fn = f"LAB5_{self.args.student_id}_task{t}_{suf}.pt"
-                    torch.save(self.q_net.state_dict(), os.path.join(self.args.save_dir,fn))
+                eval_reward = self.evaluate()
+                if eval_reward > self.best_reward:
+                    self.best_reward = eval_reward
+                    task_num, suffix = (1, 'cartpole') if 'CartPole' in self.env.spec.id else (2, 'pong')
+                    filename = f"LAB5_{self.args.student_id}_task{task_num}_{suffix}.pt"
+                    model_path = os.path.join(self.args.save_dir, filename)
+                    torch.save(self.q_net.state_dict(), model_path)
+                    print(f"Saved new best model to {model_path} with reward {eval_reward:.2f}")
+                print(f"[TrueEval] Ep: {ep} Eval Reward: {eval_reward:.2f} SC: {self.env_count} UC: {self.train_count}")
+                wandb.log({
+                    "Env Step Count": self.env_count,
+                    "Update Count": self.train_count,
+                    "Eval Reward": eval_reward
+                })
         
     def evaluate(self):
         obs, _ = self.test_env.reset()
