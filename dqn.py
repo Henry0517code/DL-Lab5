@@ -175,8 +175,8 @@ class DQNAgent:
             self.memory = PrioritizedReplayBuffer(args.memory_size)
         else:
             self.memory = deque(maxlen=args.memory_size)
-        if self.n_step > 1:
-            self.n_step_buffer = deque(maxlen=self.n_step)
+        # Always initialize n-step buffer (length 1 if n_step=1)
+        self.n_step_buffer = deque(maxlen=self.n_step)
 
         # Counters & snapshots
         self.env_count = 0

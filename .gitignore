@@ -1,3 +1,4 @@
 *.pdf
 test.py
 task.sh
+.DS_Store
